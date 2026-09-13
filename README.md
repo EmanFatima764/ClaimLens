@@ -6,7 +6,7 @@
 
 **Real-time AI-powered fact-checking for startup pitches**
 
-Live Demo: [claimlens-eyxbove2nm5qwnjhatmzeq.streamlit.app](https://claimlens-eyxbove2nm5qwnjhatmzeq.streamlit.app/)
+Live Demo: [claimlens-eyxbove2nm5qwnjhatmzeq.streamlit.app](https://claimlens-5xoiehx7n2fz5bawmwctlg.streamlit.app/)
 
 ---
 
