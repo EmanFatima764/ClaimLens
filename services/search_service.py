@@ -3,6 +3,8 @@ from config import Config
 
 class SearchService:
     def __init__(self):
+        if not Config.TAVILY_API_KEY:
+            raise ValueError("TAVILY_API_KEY is not configured.")
         self.client = TavilyClient(api_key=Config.TAVILY_API_KEY)
 
     def search_claim(self, claim_text: str, max_results: int = 3) -> list[dict]:
