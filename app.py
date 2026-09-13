@@ -1,13 +1,6 @@
 import streamlit as st
 from config import Config
 from services import STTService, ClaimExtractor, SearchService, FactChecker
-import logging
-
-# ==========================================
-# 0. LOGGING SETUP
-# ==========================================
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # ==========================================
 # 1. PAGE CONFIGURATION
@@ -187,44 +180,29 @@ if "current_chat_id" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+# Incrementing keys for the file/audio widgets. Bumping these after each
+# submission forces Streamlit to treat the uploader/recorder as brand-new
+# widgets on the next rerun, so a previously uploaded/recorded input can
+# never be silently reprocessed on a later, unrelated interaction.
+if "uploader_key" not in st.session_state:
+    st.session_state.uploader_key = 0
+
+if "audio_key" not in st.session_state:
+    st.session_state.audio_key = 0
+
 def create_new_chat():
-    """BUG FIX: Reset state properly before rerun"""
     st.session_state.messages = []
     st.session_state.current_chat_id = None
     st.rerun()
 
 def load_chat(chat_id):
-    """BUG FIX: Add validation for chat_id"""
-    if not isinstance(chat_id, (int, str)):
-        logger.error(f"Invalid chat_id type: {type(chat_id)}")
-        st.error("Invalid chat ID.")
-        return
-        
     for chat in st.session_state.saved_chats:
-        if chat.get("id") == chat_id:
-            # BUG FIX: Safely copy messages, check if it's a list
-            messages = chat.get("messages", [])
-            if isinstance(messages, list):
-                st.session_state.messages = messages.copy()
-            else:
-                logger.warning(f"Chat messages not a list for chat_id {chat_id}")
-                st.session_state.messages = []
+        if chat["id"] == chat_id:
+            st.session_state.messages = chat["messages"].copy()
             st.session_state.current_chat_id = chat_id
             st.rerun()
-            return
-    
-    logger.warning(f"Chat not found with id: {chat_id}")
 
 def save_current_session(user_title, messages_list):
-    """BUG FIX: Validate input parameters"""
-    if not isinstance(user_title, str) or not user_title.strip():
-        logger.warning("Invalid user_title provided to save_current_session")
-        user_title = "Untitled Audit"
-    
-    if not isinstance(messages_list, list):
-        logger.error(f"messages_list must be a list, got {type(messages_list)}")
-        return
-    
     if st.session_state.current_chat_id is None:
         new_id = len(st.session_state.saved_chats) + 1
         st.session_state.current_chat_id = new_id
@@ -235,9 +213,8 @@ def save_current_session(user_title, messages_list):
         })
     else:
         for chat in st.session_state.saved_chats:
-            if chat.get("id") == st.session_state.current_chat_id:
+            if chat["id"] == st.session_state.current_chat_id:
                 chat["messages"] = messages_list.copy()
-                break
 
 # ==========================================
 # 3. SIDEBAR (CHAT HISTORY & CONTROLS)
@@ -267,11 +244,9 @@ with st.sidebar:
     if not st.session_state.saved_chats:
         st.caption("No saved chats yet — start an audit above.")
     else:
-        # BUG FIX: Safely iterate with validation
         for chat in reversed(st.session_state.saved_chats):
-            chat_title = chat.get("title", "Untitled")[:40]  # Truncate to prevent UI overflow
-            if st.button(f"💬  {chat_title}", key=f"chat_{chat.get('id')}", use_container_width=True):
-                load_chat(chat.get("id"))
+            if st.button(f"💬  {chat['title']}", key=f"chat_{chat['id']}", use_container_width=True):
+                load_chat(chat["id"])
 
     st.markdown('<hr class="soft-divider">', unsafe_allow_html=True)
 
@@ -302,30 +277,25 @@ st.markdown(
 
 # Display Chat History
 for message in st.session_state.messages:
-    # BUG FIX: Validate message structure
-    if not isinstance(message, dict):
-        logger.warning(f"Skipping invalid message format: {type(message)}")
-        continue
-        
-    role = message.get("role", "user")
-    content = message.get("content", "")
-    
-    if not content:
-        logger.warning("Empty message content found")
-        continue
-    
-    avatar = "🧑‍💼" if role == "user" else "🛡️"
-    with st.chat_message(role, avatar=avatar):
-        st.markdown(content)
+    avatar = "🧑‍💼" if message["role"] == "user" else "🛡️"
+    with st.chat_message(message["role"], avatar=avatar):
+        st.markdown(message["content"])
 
 # Standard Inputs (File & Mic)
 st.markdown('<div class="input-card">', unsafe_allow_html=True)
 st.markdown('<div class="input-card-label">Provide your pitch</div>', unsafe_allow_html=True)
 col1, col2 = st.columns(2)
 with col1:
-    uploaded_file = st.file_uploader("📁 Upload Audio File", type=["mp3", "wav", "m4a"])
+    uploaded_file = st.file_uploader(
+        "📁 Upload Audio File",
+        type=["mp3", "wav", "m4a"],
+        key=f"uploader_{st.session_state.uploader_key}",
+    )
 with col2:
-    recorded_audio = st.audio_input("🎙️ Record Audio Pitch")
+    recorded_audio = st.audio_input(
+        "🎙️ Record Audio Pitch",
+        key=f"audio_{st.session_state.audio_key}",
+    )
 st.markdown('</div>', unsafe_allow_html=True)
 
 # Chat Input Bar
@@ -335,29 +305,8 @@ prompt = st.chat_input("Paste claim or ask here...")
 # 5. AUDIT & FACT CHECK LOGIC
 # ==========================================
 if prompt or uploaded_file or recorded_audio:
-    # BUG FIX: Validate inputs before processing
-    if prompt and not isinstance(prompt, str):
-        st.error("Invalid prompt input.")
-        st.stop()
-    
-    # BUG FIX: Determine input source safely
-    if prompt:
-        user_text = prompt.strip()
-        audio_source = None
-    elif recorded_audio:
-        user_text = "🎙️ [Voice Audio]"
-        audio_source = recorded_audio
-    elif uploaded_file:
-        user_text = f"📁 {uploaded_file.name}"
-        audio_source = uploaded_file
-    else:
-        st.error("No input provided.")
-        st.stop()
-
-    # BUG FIX: Check for empty text input
-    if not user_text or not user_text.strip():
-        st.error("Please provide some input.")
-        st.stop()
+    user_text = prompt if prompt else ("🎙️ [Voice Audio]" if recorded_audio else f"📁 {uploaded_file.name}")
+    audio_source = recorded_audio or uploaded_file
 
     st.session_state.messages.append({"role": "user", "content": user_text})
     with st.chat_message("user", avatar="🧑‍💼"):
@@ -366,144 +315,76 @@ if prompt or uploaded_file or recorded_audio:
     with st.chat_message("assistant", avatar="🛡️"):
         with st.spinner("🔎 Processing pitch and checking facts..."):
             transcript = ""
-            
-            try:
-                # BUG FIX: Handle audio transcription with proper error handling
-                if audio_source:
-                    stt = STTService()
-                    transcript = stt.transcribe_audio(audio_source)
-                    if not transcript or not isinstance(transcript, str):
-                        st.error("Failed to transcribe audio. Please try again.")
-                        logger.error(f"Invalid transcription result: {type(transcript)}")
-                        st.stop()
-                else:
-                    transcript = prompt.strip() if prompt else ""
+            if audio_source:
+                stt = STTService()
+                transcript = stt.transcribe_audio(audio_source)
+            else:
+                transcript = prompt.strip() if prompt else ""
 
-                if not transcript or not transcript.strip():
-                    st.error("No clear speech or text input found.")
-                    st.stop()
-
-                # BUG FIX: Extract claims with error handling
-                extractor = ClaimExtractor()
-                claims = extractor.extract_claims(transcript)
-                
-                if not isinstance(claims, list):
-                    st.error("Failed to extract claims from input.")
-                    logger.error(f"Claims extraction returned non-list: {type(claims)}")
-                    st.stop()
-
-                response_markdown = ""
-                
-                if not claims:
-                    response_markdown = "No verifiable factual claims were found."
-                    st.info(response_markdown)
-                else:
-                    # BUG FIX: Initialize services once, with error handling
-                    try:
-                        searcher = SearchService()
-                        checker = FactChecker()
-                    except Exception as e:
-                        st.error(f"Failed to initialize services: {str(e)}")
-                        logger.error(f"Service initialization error: {e}")
-                        st.stop()
-
-                    # BUG FIX: Process each claim with robust error handling
-                    for idx, item in enumerate(claims):
-                        try:
-                            # Validate claim structure
-                            if not isinstance(item, dict):
-                                logger.warning(f"Claim {idx} is not a dict, skipping")
-                                continue
-                            
-                            claim_text = item.get("claim", "")
-                            if not claim_text or not isinstance(claim_text, str):
-                                logger.warning(f"Invalid claim text at index {idx}")
-                                continue
-                            
-                            claim_category = item.get("category", "General Fact")
-                            if not isinstance(claim_category, str):
-                                claim_category = "General Fact"
-
-                            # BUG FIX: Search with error handling
-                            search_res = searcher.search_claim(claim_text)
-                            if not isinstance(search_res, list):
-                                logger.warning(f"Search returned non-list for claim: {claim_text}")
-                                search_res = []
-
-                            # BUG FIX: Verify claim with error handling
-                            verdict_info = checker.verify_claim(claim_text, search_res)
-                            if not isinstance(verdict_info, dict):
-                                logger.warning(f"Verdict info is not a dict for claim: {claim_text}")
-                                verdict_info = {
-                                    "verdict": "UNVERIFIED",
-                                    "explanation": "Could not verify claim.",
-                                    "sources": []
-                                }
-
-                            verdict = verdict_info.get("verdict", "UNVERIFIED")
-                            explanation = verdict_info.get("explanation", "No explanation available.")
-                            sources = verdict_info.get("sources", [])
-                            
-                            # BUG FIX: Validate sources is a list
-                            if not isinstance(sources, list):
-                                sources = []
-                            
-                            sources_str = ", ".join(str(s) for s in sources) if sources else "None"
-
-                            # BUG FIX: Sanitize verdict value
-                            valid_verdicts = {"TRUE", "FALSE", "MIXED", "UNVERIFIED"}
-                            if verdict not in valid_verdicts:
-                                verdict = "UNVERIFIED"
-
-                            # Plain markdown card kept for chat history / persistence
-                            card = (
-                                f"**Claim:** \"{claim_text}\"\n\n"
-                                f"**Verdict:** `{verdict}` | **Category:** {claim_category}\n\n"
-                                f"**Explanation:** {explanation}\n\n"
-                                f"**Sources:** {sources_str}\n"
-                            )
-
-                            response_markdown += card + "\n---\n"
-
-                            # Styled version shown live in the UI
-                            pill_class = {
-                                "TRUE": "pill-true",
-                                "FALSE": "pill-false",
-                            }.get(verdict, "pill-unverified")
-
-                            verdict_icon = {"TRUE": "✅", "FALSE": "❌"}.get(verdict, "⚠️")
-
-                            # BUG FIX: Escape special characters in claim_text for HTML
-                            safe_claim_text = claim_text.replace('"', '&quot;').replace('<', '&lt;').replace('>', '&gt;')
-
-                            styled_card = f"""
-                            <div class="verdict-card">
-                                <div class="verdict-claim">💬 "{safe_claim_text}"</div>
-                                <span class="verdict-pill {pill_class}">{verdict_icon} {verdict}</span>
-                                <span class="verdict-category">🏷️ {claim_category}</span>
-                                <div class="verdict-explanation">{explanation}</div>
-                                <div class="verdict-sources">🔗 Sources: {sources_str}</div>
-                            </div>
-                            """
-                            st.markdown(styled_card, unsafe_allow_html=True)
-
-                        except Exception as e:
-                            logger.error(f"Error processing claim {idx}: {str(e)}")
-                            st.warning(f"Error processing one of the claims: {str(e)}")
-                            continue
-
-            except Exception as e:
-                st.error(f"An unexpected error occurred: {str(e)}")
-                logger.error(f"Unexpected error in audit logic: {e}", exc_info=True)
+            if not transcript:
+                st.error("No clear speech or text input found.")
                 st.stop()
 
-        # BUG FIX: Ensure response_markdown is a string before appending
-        if isinstance(response_markdown, str):
-            st.session_state.messages.append({"role": "assistant", "content": response_markdown})
+            extractor = ClaimExtractor()
+            claims = extractor.extract_claims(transcript)
 
-            # Save to Sidebar History
-            title = user_text[:25] + "..." if len(user_text) > 25 else user_text
-            save_current_session(title, st.session_state.messages)
-        else:
-            logger.error(f"response_markdown is not a string: {type(response_markdown)}")
-            st.error("Failed to save audit results.")
+            response_markdown = ""
+            if not claims:
+                response_markdown = "No verifiable factual claims were found."
+                st.info(response_markdown)
+            else:
+                searcher = SearchService()
+                checker = FactChecker()
+
+                for item in claims:
+                    claim_text = item.get("claim", "")
+                    if claim_text:
+                        search_res = searcher.search_claim(claim_text)
+                        verdict_info = checker.verify_claim(claim_text, search_res)
+
+                        verdict = verdict_info.get("verdict", "UNVERIFIED")
+                        explanation = verdict_info.get("explanation", "")
+                        sources = verdict_info.get("sources", [])
+                        sources_str = ", ".join(sources) if sources else "None"
+
+                        # Plain markdown card kept for chat history / persistence
+                        card = f"**Claim:** \"{claim_text}\"\n\n" \
+                               f"**Verdict:** `{verdict}` | **Category:** {item.get('category', 'General')}\n\n" \
+                               f"**Explanation:** {explanation}\n\n" \
+                               f"**Sources:** {sources_str}\n"
+
+                        response_markdown += card + "\n---\n"
+
+                        # Styled version shown live in the UI
+                        pill_class = {
+                            "TRUE": "pill-true",
+                            "FALSE": "pill-false",
+                        }.get(verdict, "pill-unverified")
+
+                        verdict_icon = {"TRUE": "✅", "FALSE": "❌"}.get(verdict, "⚠️")
+
+                        styled_card = f"""
+                        <div class="verdict-card">
+                            <div class="verdict-claim">💬 "{claim_text}"</div>
+                            <span class="verdict-pill {pill_class}">{verdict_icon} {verdict}</span>
+                            <span class="verdict-category">🏷️ {item.get('category', 'General')}</span>
+                            <div class="verdict-explanation">{explanation}</div>
+                            <div class="verdict-sources">🔗 Sources: {sources_str}</div>
+                        </div>
+                        """
+                        st.markdown(styled_card, unsafe_allow_html=True)
+
+        st.session_state.messages.append({"role": "assistant", "content": response_markdown})
+
+        # Save to Sidebar History
+        title = user_text[:25] + "..." if len(user_text) > 25 else user_text
+        save_current_session(title, st.session_state.messages)
+
+    # Force the file uploader and audio recorder to reset to a fresh, empty
+    # widget on the next run. Without this, Streamlit keeps returning the
+    # same uploaded/recorded value on every later rerun (e.g. when the user
+    # submits a new text prompt), causing the previous input to be silently
+    # reprocessed instead of the new one.
+    st.session_state.uploader_key += 1
+    st.session_state.audio_key += 1
+    st.rerun()
