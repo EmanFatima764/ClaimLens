@@ -1,121 +1,236 @@
 import json
+from typing import Any
+
 from groq import Groq
 from config import Config
 
 
 class ClaimExtractor:
-    """Extracts factual and externally verifiable claims from a pitch transcript."""
+    """
+    Extracts factual, externally verifiable claims from startup pitches.
+
+    Pipeline:
+        Transcript
+            ↓
+        Groq LLM
+            ↓
+        Structured JSON
+            ↓
+        Validation / Cleaning
+            ↓
+        List of claims
+    """
+
+    ALLOWED_CATEGORIES = {
+        "Financial",
+        "Market Size",
+        "Traction",
+        "Growth",
+        "Funding",
+        "Industry Fact",
+        "Performance",
+        "General Fact",
+    }
+
+    MAX_CLAIM_LENGTH = 500
 
     def __init__(self):
         if not Config.GROQ_API_KEY:
             raise ValueError("GROQ_API_KEY is not configured.")
+
+        if not Config.GROQ_MODEL:
+            raise ValueError("GROQ_MODEL is not configured.")
 
         self.client = Groq(api_key=Config.GROQ_API_KEY)
         self.model = Config.GROQ_MODEL
 
     def extract_claims(self, transcript: str) -> list[dict]:
         """
-        Extract factual claims from a startup pitch that can potentially
-        be verified using external sources.
+        Extract factual claims from a pitch transcript.
+
+        Args:
+            transcript: Text produced by STT or entered directly by the user.
+
+        Returns:
+            A list of validated claim dictionaries.
+
+        Raises:
+            ValueError: If transcript is empty or invalid.
+            RuntimeError: If the LLM/API/JSON processing fails.
         """
 
-        if not transcript or not transcript.strip():
-            return []
+        # ---------------------------------------------------------
+        # 1. Validate transcript
+        # ---------------------------------------------------------
+
+        if transcript is None:
+            raise ValueError("Transcript is None.")
+
+        transcript = str(transcript).strip()
+
+        if not transcript:
+            raise ValueError("Transcript is empty.")
+
+        # Prevent accidentally sending an enormous transcript.
+        transcript = transcript[:20000]
+
+        # ---------------------------------------------------------
+        # 2. Build extraction prompt
+        # ---------------------------------------------------------
 
         prompt = f"""
-You are an expert AI Pitch Auditor.
+You are the claim extraction engine for an AI Pitch Auditor.
 
-Your task is to identify factual claims in the startup pitch below.
+Your job is to extract factual statements from a startup pitch that
+could potentially be verified using external evidence.
 
-A claim should be extracted if it states something that could potentially
-be checked or verified using data, documents, websites, reports, or other
-external evidence.
+IMPORTANT:
+Extract claims based on what the speaker actually says.
+Do not invent, infer, estimate, or rewrite facts that are not present.
 
-EXTRACT CLAIMS SUCH AS:
+A claim does NOT need to contain a number to be verifiable.
 
-1. Business metrics
+==================================================
+CLAIMS TO EXTRACT
+==================================================
+
+TRACTION
 - Number of users
 - Number of customers
+- Number of active users
+- Number of clinics/companies using the product
+- Customer relationships
+- Partnerships that already exist
+
+FINANCIAL
 - Revenue
 - ARR / MRR
 - Sales
 - Profit
-- Growth rate
-- Retention rate
-- Conversion rate
+- Pricing
+- Contract value
+- Financial performance
 
-2. Market claims
+GROWTH
+- Growth percentages
+- User growth
+- Revenue growth
+- Customer growth
+- Month-over-month or year-over-year growth
+
+MARKET SIZE
 - TAM
 - SAM
 - SOM
 - Market size
-- Market growth
 - Market share
-- Industry statistics
+- Market growth
 
-3. Funding and company information
+FUNDING
 - Funding raised
 - Investment amount
+- Investors
 - Valuation
-- Number of employees
-- Number of companies using the product
+- Funding round
 
-4. Product/performance claims
-- "Our AI achieves 95% accuracy"
-- "We reduce processing time by 60%"
-- "Our system is 3x faster"
-- "We process 10,000 documents per month"
+PERFORMANCE
+- Accuracy
+- Speed
+- Processing volume
+- Cost reduction
+- Time reduction
+- Conversion rate
+- Retention
+- Other measurable product results
 
-5. Customer claims
-- Customer count
-- Named customer relationships
-- Customer results
-- Case-study statistics
+INDUSTRY FACT
+- Industry statistics
+- Research-based claims
+- Claims attributed to organizations such as WHO, World Bank,
+  Gartner, McKinsey, etc.
 
-6. Pricing and financial claims
-- "$49 per month"
-- "$10,000 annual contract"
-- "We generated $100K in revenue"
+GENERAL FACT
+- Other specific factual statements that could reasonably be
+  checked against external evidence.
 
-7. Other factual claims
-Any specific statement that can reasonably be checked against an
-external source.
+==================================================
+DO NOT EXTRACT
+==================================================
 
-DO NOT extract:
+Do NOT extract:
 
 - Opinions
 - Personal beliefs
 - Questions
-- Purely hypothetical statements
-- Future plans
-- Goals that have not happened yet
-- Generic marketing statements with no factual information
+- Generic marketing language
+- Empty superlatives
+- "We believe..."
+- "We think..."
+- "We want to..."
+- "We plan to..."
+- "We will..."
+- Future goals that have not happened
+- Hypothetical examples
+- Predictions presented only as future plans
+- Purely subjective statements
 
-IMPORTANT:
+However, if a future statement contains a factual reference that can
+be independently verified, extract only the factual part.
 
-Do NOT require a number for every claim.
+==================================================
+EXAMPLES
+==================================================
 
-For example:
+Input:
+"We currently have 4,500 users."
 
-"We currently serve hospitals across Pakistan."
+Extract:
+{{
+    "claim": "The company currently has 4,500 users.",
+    "category": "Traction"
+}}
 
-This can be a factual claim.
+Input:
+"Our customers save 40% of their administrative time."
 
-"We have partnerships with three universities."
+Extract:
+{{
+    "claim": "Customers save 40% of their administrative time.",
+    "category": "Performance"
+}}
 
-This is also a factual claim.
+Input:
+"We raised $500,000 in seed funding."
 
-"According to WHO, X causes Y."
+Extract:
+{{
+    "claim": "The company raised $500,000 in seed funding.",
+    "category": "Funding"
+}}
 
-This is also a factual claim.
+Input:
+"We plan to reach 100,000 users next year."
 
-Return ONLY this JSON structure:
+Do NOT extract this because it is a future goal.
+
+Input:
+"We are the best AI platform in the market."
+
+Do NOT extract this because it is subjective marketing language.
+
+==================================================
+OUTPUT FORMAT
+==================================================
+
+Return ONLY valid JSON.
+
+The JSON MUST have exactly this structure:
 
 {{
     "claims": [
         {{
             "id": 1,
-            "claim": "Exact concise factual claim",
+            "claim": "Concise factual claim",
             "category": "Traction"
         }}
     ]
@@ -132,19 +247,24 @@ Allowed categories:
 - Performance
 - General Fact
 
-If there are genuinely no factual claims, return:
+If there are no factual claims:
 
 {{
     "claims": []
 }}
 
-Do not add explanations outside the JSON.
+Do not include explanations outside the JSON.
 
-PITCH TRANSCRIPT:
-\"\"\"
+==================================================
+PITCH TRANSCRIPT
+==================================================
+
 {transcript}
-\"\"\"
 """
+
+        # ---------------------------------------------------------
+        # 3. Call Groq
+        # ---------------------------------------------------------
 
         try:
             response = self.client.chat.completions.create(
@@ -153,9 +273,9 @@ PITCH TRANSCRIPT:
                     {
                         "role": "system",
                         "content": (
-                            "You are a factual claim extraction engine. "
-                            "Extract useful, specific, externally verifiable "
-                            "claims from startup pitches."
+                            "You are a strict factual claim extraction "
+                            "engine for a startup pitch auditing system. "
+                            "Return only valid JSON."
                         ),
                     },
                     {
@@ -167,53 +287,167 @@ PITCH TRANSCRIPT:
                 response_format={"type": "json_object"},
             )
 
+        except Exception as e:
+            # Do NOT silently convert API failures into [].
+            raise RuntimeError(
+                f"Groq claim extraction request failed: {e}"
+            ) from e
+
+        # ---------------------------------------------------------
+        # 4. Get model response
+        # ---------------------------------------------------------
+
+        try:
             content = response.choices[0].message.content
+        except (AttributeError, IndexError, TypeError) as e:
+            raise RuntimeError(
+                "Groq returned an unexpected response structure."
+            ) from e
 
-            if not content:
-                return []
+        if not content:
+            raise RuntimeError(
+                "Groq returned an empty response for claim extraction."
+            )
 
-            # Debugging
-            print("RAW CLAIM EXTRACTOR RESPONSE:")
-            print(content)
+        # Useful during development/deployment debugging.
+        print("\n========== CLAIM EXTRACTOR ==========")
+        print(f"Model: {self.model}")
+        print(f"Transcript length: {len(transcript)}")
+        print("Raw model response:")
+        print(content)
+        print("=====================================\n")
 
+        # ---------------------------------------------------------
+        # 5. Parse JSON
+        # ---------------------------------------------------------
+
+        try:
             data = json.loads(content)
 
-            if not isinstance(data, dict):
-                return []
-
-            claims = data.get("claims", [])
-
-            if not isinstance(claims, list):
-                return []
-
-            validated_claims = []
-
-            for index, item in enumerate(claims, start=1):
-
-                if not isinstance(item, dict):
-                    continue
-
-                claim = item.get("claim")
-                category = item.get("category", "General Fact")
-
-                if not claim:
-                    continue
-
-                validated_claims.append(
-                    {
-                        "id": index,
-                        "claim": str(claim).strip(),
-                        "category": str(category).strip(),
-                    }
-                )
-
-            return validated_claims
-
         except json.JSONDecodeError as e:
-            print(f"JSON parsing error: {e}")
-            print(f"Model response: {content if 'content' in locals() else 'None'}")
-            return []
+            raise RuntimeError(
+                f"Groq returned invalid JSON: {e}. "
+                f"Raw response: {content}"
+            ) from e
 
-        except Exception as e:
-            print(f"Claim extraction error: {e}")
-            return []
+        # ---------------------------------------------------------
+        # 6. Validate top-level response
+        # ---------------------------------------------------------
+
+        if not isinstance(data, dict):
+            raise RuntimeError(
+                "Claim extractor response must be a JSON object."
+            )
+
+        claims = data.get("claims")
+
+        if claims is None:
+            raise RuntimeError(
+                "Claim extractor response does not contain a 'claims' field."
+            )
+
+        if not isinstance(claims, list):
+            raise RuntimeError(
+                "The 'claims' field must contain a JSON list."
+            )
+
+        # ---------------------------------------------------------
+        # 7. Validate and clean claims
+        # ---------------------------------------------------------
+
+        validated_claims = []
+        seen_claims = set()
+
+        for item in claims:
+
+            if not isinstance(item, dict):
+                continue
+
+            raw_claim = item.get("claim")
+            raw_category = item.get("category")
+
+            if raw_claim is None:
+                continue
+
+            claim = str(raw_claim).strip()
+
+            if not claim:
+                continue
+
+            # Prevent extremely long model-generated claims.
+            claim = claim[:self.MAX_CLAIM_LENGTH]
+
+            # Normalize category.
+            category = self._normalize_category(raw_category)
+
+            # Remove duplicate claims.
+            normalized_claim = " ".join(claim.lower().split())
+
+            if normalized_claim in seen_claims:
+                continue
+
+            seen_claims.add(normalized_claim)
+
+            validated_claims.append(
+                {
+                    "id": len(validated_claims) + 1,
+                    "claim": claim,
+                    "category": category,
+                }
+            )
+
+        # ---------------------------------------------------------
+        # 8. Debug result
+        # ---------------------------------------------------------
+
+        print(
+            f"Claim extraction completed successfully. "
+            f"Claims found: {len(validated_claims)}"
+        )
+
+        return validated_claims
+
+    # =============================================================
+    # Helper Methods
+    # =============================================================
+
+    def _normalize_category(self, category: Any) -> str:
+        """
+        Normalize the category returned by the LLM.
+        """
+
+        if not category:
+            return "General Fact"
+
+        category = str(category).strip()
+
+        # Exact match
+        if category in self.ALLOWED_CATEGORIES:
+            return category
+
+        # Case-insensitive match
+        for allowed in self.ALLOWED_CATEGORIES:
+            if category.lower() == allowed.lower():
+                return allowed
+
+        # Common variations
+        category_map = {
+            "financial metric": "Financial",
+            "finance": "Financial",
+            "market": "Market Size",
+            "market size claim": "Market Size",
+            "traction metric": "Traction",
+            "customer": "Traction",
+            "customers": "Traction",
+            "growth metric": "Growth",
+            "funding round": "Funding",
+            "investment": "Funding",
+            "performance metric": "Performance",
+            "product performance": "Performance",
+            "industry": "Industry Fact",
+            "industry statistic": "Industry Fact",
+            "general": "General Fact",
+            "fact": "General Fact",
+        }
+
+        return category_map.get(category.lower(), "General Fact")
