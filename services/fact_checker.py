@@ -5,22 +5,18 @@ from config import Config
 
 class FactChecker:
     def __init__(self):
-        if not Config.GROQ_API_KEY:
-            raise ValueError("GROQ_API_KEY is not configured.")
         self.client = Groq(api_key=Config.GROQ_API_KEY)
-        self.model = Config.GROQ_MODEL
+        self.model = "llama-3.3-70b-versatile"
 
-    def verify_claim(self, claim: str, search_results: list) -> dict:
+    def verify_claim(self, claim: str, search_results: list[dict]) -> dict:
         """
         Search evidence ke mutabiq claim ki accuracy check karta hai.
         """
-        if not isinstance(search_results, list):
-            search_results = []
-        
+        # Extract evidence safely with fallback text
         evidence_lines = [
-            f"- Source ({res.get('url', 'Unknown')}): {res.get('snippet', '')}"
+            f"- Source ({res['url']}): {res.get('snippet', '')}"
             for res in search_results
-            if isinstance(res, dict) and res.get("url")
+            if res.get("url")
         ]
         context = "\n".join(evidence_lines) if evidence_lines else "No online search evidence found."
 
@@ -43,6 +39,7 @@ Return a JSON object with these exact keys:
 """
 
         try:
+            # Native Groq API call with JSON mode enabled
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -50,28 +47,11 @@ Return a JSON object with these exact keys:
                     {"role": "user", "content": user_prompt},
                 ],
                 response_format={"type": "json_object"},
-                temperature=0.1,
+                temperature=0.1,  # Low temperature for deterministic output
             )
 
-            raw_content = (response.choices[0].message.content or "").strip()
-            if not raw_content:
-                raise RuntimeError("Groq returned an empty verification response.")
-
-            result = json.loads(raw_content)
-            if not isinstance(result, dict):
-                raise RuntimeError("Groq verification response was not a JSON object.")
-            
-            # Ensure required fields exist
-            if "verdict" not in result:
-                result["verdict"] = "UNVERIFIED"
-            if "confidence" not in result:
-                result["confidence"] = 0.0
-            if "explanation" not in result:
-                result["explanation"] = "No explanation available."
-            if "sources" not in result:
-                result["sources"] = []
-            
-            return result
+            raw_content = response.choices[0].message.content.strip()
+            return json.loads(raw_content)
 
         except Exception as e:
             return {
