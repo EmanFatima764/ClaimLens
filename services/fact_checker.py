@@ -4,20 +4,23 @@ from config import Config
 
 
 class FactChecker:
-    def _init_(self):
+    def __init__(self):
         if not Config.GROQ_API_KEY:
             raise ValueError("GROQ_API_KEY is not configured.")
         self.client = Groq(api_key=Config.GROQ_API_KEY)
         self.model = Config.GROQ_MODEL
 
-    def verify_claim(self, claim: str, search_results: list[dict]) -> dict:
+    def verify_claim(self, claim: str, search_results: list) -> dict:
         """
         Search evidence ke mutabiq claim ki accuracy check karta hai.
         """
+        if not isinstance(search_results, list):
+            search_results = []
+        
         evidence_lines = [
-            f"- Source ({res['url']}): {res.get('snippet', '')}"
+            f"- Source ({res.get('url', 'Unknown')}): {res.get('snippet', '')}"
             for res in search_results
-            if res.get("url")
+            if isinstance(res, dict) and res.get("url")
         ]
         context = "\n".join(evidence_lines) if evidence_lines else "No online search evidence found."
 
@@ -57,6 +60,17 @@ Return a JSON object with these exact keys:
             result = json.loads(raw_content)
             if not isinstance(result, dict):
                 raise RuntimeError("Groq verification response was not a JSON object.")
+            
+            # Ensure required fields exist
+            if "verdict" not in result:
+                result["verdict"] = "UNVERIFIED"
+            if "confidence" not in result:
+                result["confidence"] = 0.0
+            if "explanation" not in result:
+                result["explanation"] = "No explanation available."
+            if "sources" not in result:
+                result["sources"] = []
+            
             return result
 
         except Exception as e:
