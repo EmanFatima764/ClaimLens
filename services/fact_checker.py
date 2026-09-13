@@ -4,7 +4,9 @@ from config import Config
 
 
 class FactChecker:
-    def __init__(self):
+    def _init_(self):
+        if not Config.GROQ_API_KEY:
+            raise ValueError("GROQ_API_KEY is not configured.")
         self.client = Groq(api_key=Config.GROQ_API_KEY)
         self.model = Config.GROQ_MODEL
 
@@ -12,7 +14,6 @@ class FactChecker:
         """
         Search evidence ke mutabiq claim ki accuracy check karta hai.
         """
-        # Extract evidence safely with fallback text
         evidence_lines = [
             f"- Source ({res['url']}): {res.get('snippet', '')}"
             for res in search_results
@@ -39,7 +40,6 @@ Return a JSON object with these exact keys:
 """
 
         try:
-            # Native Groq API call with JSON mode enabled
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -47,11 +47,17 @@ Return a JSON object with these exact keys:
                     {"role": "user", "content": user_prompt},
                 ],
                 response_format={"type": "json_object"},
-                temperature=0.1,  # Low temperature for deterministic output
+                temperature=0.1,
             )
 
-            raw_content = response.choices[0].message.content.strip()
-            return json.loads(raw_content)
+            raw_content = (response.choices[0].message.content or "").strip()
+            if not raw_content:
+                raise RuntimeError("Groq returned an empty verification response.")
+
+            result = json.loads(raw_content)
+            if not isinstance(result, dict):
+                raise RuntimeError("Groq verification response was not a JSON object.")
+            return result
 
         except Exception as e:
             return {
