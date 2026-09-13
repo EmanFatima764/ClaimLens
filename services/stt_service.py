@@ -11,7 +11,7 @@ class STTService:
 
     MAX_FILE_SIZE_MB = 25  # Groq's per-file limit
 
-    def _init_(self):
+    def __init__(self):
         if not Config.GROQ_API_KEY:
             raise ValueError("GROQ_API_KEY is not configured.")
         self.client = Groq(api_key=Config.GROQ_API_KEY)
