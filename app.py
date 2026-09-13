@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 # 1. PAGE CONFIGURATION
 # ==========================================
 st.set_page_config(
-    page_title="AI Pitch Auditor",
+    page_title="ClaimLens",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -146,9 +146,9 @@ st.markdown("""
         margin-right: 0.5rem;
         text-transform: uppercase;
     }
-    .pill-true { background: rgba(16,185,129,0.18); color: #34d399; border: 1px solid rgba(52,211,153,0.4);}
-    .pill-false { background: rgba(239,68,68,0.18); color: #f87171; border: 1px solid rgba(248,113,113,0.4);}
-    .pill-unverified { background: rgba(245,158,11,0.18); color: #fbbf24; border: 1px solid rgba(251,191,36,0.4);}
+    .pill-true { background: rgba(16,185,129,0.18); color: #34d399; border: 1px solid rgba(52,211,153,0.4);}    
+    .pill-false { background: rgba(239,68,68,0.18); color: #f87171; border: 1px solid rgba(248,113,113,0.4);}    
+    .pill-unverified { background: rgba(245,158,11,0.18); color: #fbbf24; border: 1px solid rgba(251,191,36,0.4);}    
     .verdict-category {
         font-size: 0.78rem;
         color: #9aa0b4;
@@ -247,7 +247,7 @@ with st.sidebar:
         """
         <div style="text-align:center; padding: 0.6rem 0 1rem 0;">
             <div style="font-size: 2.2rem;">🛡️</div>
-            <div style="font-size: 1.25rem; font-weight: 800; color: #f5f6fa;">Pitch Auditor</div>
+            <div style="font-size: 1.25rem; font-weight: 800; color: #f5f6fa;">ClaimLens</div>
             <div style="font-size: 0.8rem; color: #8b90a8;">AI-powered fact checking</div>
         </div>
         """,
@@ -287,7 +287,7 @@ with st.sidebar:
 st.markdown(
     """
     <div class="hero-wrap">
-        <p class="hero-title">🛡️ AI Pitch Auditor</p>
+        <p class="hero-title">🛡️ ClaimLens</p>
         <p class="hero-sub">Paste a claim, record your pitch, or upload an audio file — I'll extract the factual claims and check them for you.</p>
         <div class="hero-badges">
             <span class="hero-badge">🎙️ Voice input</span>
