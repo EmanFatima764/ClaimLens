@@ -1,6 +1,13 @@
 import streamlit as st
 from config import Config
 from services import STTService, ClaimExtractor, SearchService, FactChecker
+import logging
+
+# ==========================================
+# 0. LOGGING SETUP
+# ==========================================
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ==========================================
 # 1. PAGE CONFIGURATION
@@ -181,18 +188,43 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 def create_new_chat():
+    """BUG FIX: Reset state properly before rerun"""
     st.session_state.messages = []
     st.session_state.current_chat_id = None
     st.rerun()
 
 def load_chat(chat_id):
+    """BUG FIX: Add validation for chat_id"""
+    if not isinstance(chat_id, (int, str)):
+        logger.error(f"Invalid chat_id type: {type(chat_id)}")
+        st.error("Invalid chat ID.")
+        return
+        
     for chat in st.session_state.saved_chats:
-        if chat["id"] == chat_id:
-            st.session_state.messages = chat["messages"].copy()
+        if chat.get("id") == chat_id:
+            # BUG FIX: Safely copy messages, check if it's a list
+            messages = chat.get("messages", [])
+            if isinstance(messages, list):
+                st.session_state.messages = messages.copy()
+            else:
+                logger.warning(f"Chat messages not a list for chat_id {chat_id}")
+                st.session_state.messages = []
             st.session_state.current_chat_id = chat_id
             st.rerun()
+            return
+    
+    logger.warning(f"Chat not found with id: {chat_id}")
 
 def save_current_session(user_title, messages_list):
+    """BUG FIX: Validate input parameters"""
+    if not isinstance(user_title, str) or not user_title.strip():
+        logger.warning("Invalid user_title provided to save_current_session")
+        user_title = "Untitled Audit"
+    
+    if not isinstance(messages_list, list):
+        logger.error(f"messages_list must be a list, got {type(messages_list)}")
+        return
+    
     if st.session_state.current_chat_id is None:
         new_id = len(st.session_state.saved_chats) + 1
         st.session_state.current_chat_id = new_id
@@ -203,8 +235,9 @@ def save_current_session(user_title, messages_list):
         })
     else:
         for chat in st.session_state.saved_chats:
-            if chat["id"] == st.session_state.current_chat_id:
+            if chat.get("id") == st.session_state.current_chat_id:
                 chat["messages"] = messages_list.copy()
+                break
 
 # ==========================================
 # 3. SIDEBAR (CHAT HISTORY & CONTROLS)
@@ -234,9 +267,11 @@ with st.sidebar:
     if not st.session_state.saved_chats:
         st.caption("No saved chats yet — start an audit above.")
     else:
+        # BUG FIX: Safely iterate with validation
         for chat in reversed(st.session_state.saved_chats):
-            if st.button(f"💬  {chat['title']}", key=f"chat_{chat['id']}", use_container_width=True):
-                load_chat(chat["id"])
+            chat_title = chat.get("title", "Untitled")[:40]  # Truncate to prevent UI overflow
+            if st.button(f"💬  {chat_title}", key=f"chat_{chat.get('id')}", use_container_width=True):
+                load_chat(chat.get("id"))
 
     st.markdown('<hr class="soft-divider">', unsafe_allow_html=True)
 
@@ -267,9 +302,21 @@ st.markdown(
 
 # Display Chat History
 for message in st.session_state.messages:
-    avatar = "🧑‍💼" if message["role"] == "user" else "🛡️"
-    with st.chat_message(message["role"], avatar=avatar):
-        st.markdown(message["content"])
+    # BUG FIX: Validate message structure
+    if not isinstance(message, dict):
+        logger.warning(f"Skipping invalid message format: {type(message)}")
+        continue
+        
+    role = message.get("role", "user")
+    content = message.get("content", "")
+    
+    if not content:
+        logger.warning("Empty message content found")
+        continue
+    
+    avatar = "🧑‍💼" if role == "user" else "🛡️"
+    with st.chat_message(role, avatar=avatar):
+        st.markdown(content)
 
 # Standard Inputs (File & Mic)
 st.markdown('<div class="input-card">', unsafe_allow_html=True)
@@ -287,385 +334,176 @@ prompt = st.chat_input("Paste claim or ask here...")
 # ==========================================
 # 5. AUDIT & FACT CHECK LOGIC
 # ==========================================
-
 if prompt or uploaded_file or recorded_audio:
+    # BUG FIX: Validate inputs before processing
+    if prompt and not isinstance(prompt, str):
+        st.error("Invalid prompt input.")
+        st.stop()
+    
+    # BUG FIX: Determine input source safely
+    if prompt:
+        user_text = prompt.strip()
+        audio_source = None
+    elif recorded_audio:
+        user_text = "🎙️ [Voice Audio]"
+        audio_source = recorded_audio
+    elif uploaded_file:
+        user_text = f"📁 {uploaded_file.name}"
+        audio_source = uploaded_file
+    else:
+        st.error("No input provided.")
+        st.stop()
 
-    # ------------------------------------------------------
-    # 1. Determine input
-    # ------------------------------------------------------
+    # BUG FIX: Check for empty text input
+    if not user_text or not user_text.strip():
+        st.error("Please provide some input.")
+        st.stop()
 
-    user_text = (
-        prompt
-        if prompt
-        else (
-            "🎙️ [Voice Audio]"
-            if recorded_audio
-            else f"📁 {uploaded_file.name}"
-        )
-    )
-
-    audio_source = recorded_audio or uploaded_file
-
-    # Save user message
-    st.session_state.messages.append(
-        {
-            "role": "user",
-            "content": user_text
-        }
-    )
-
+    st.session_state.messages.append({"role": "user", "content": user_text})
     with st.chat_message("user", avatar="🧑‍💼"):
         st.write(user_text)
 
-    # ------------------------------------------------------
-    # 2. Process input
-    # ------------------------------------------------------
-
     with st.chat_message("assistant", avatar="🛡️"):
-
         with st.spinner("🔎 Processing pitch and checking facts..."):
-
             transcript = ""
-
-            # ==================================================
-            # A. AUDIO INPUT → STT
-            # ==================================================
-
-            if audio_source:
-
-                try:
+            
+            try:
+                # BUG FIX: Handle audio transcription with proper error handling
+                if audio_source:
                     stt = STTService()
-
                     transcript = stt.transcribe_audio(audio_source)
+                    if not transcript or not isinstance(transcript, str):
+                        st.error("Failed to transcribe audio. Please try again.")
+                        logger.error(f"Invalid transcription result: {type(transcript)}")
+                        st.stop()
+                else:
+                    transcript = prompt.strip() if prompt else ""
 
-                except Exception as e:
-
-                    st.error(
-                        f"🎙️ Speech-to-text processing failed: {e}"
-                    )
-
+                if not transcript or not transcript.strip():
+                    st.error("No clear speech or text input found.")
                     st.stop()
 
-            # ==================================================
-            # B. TEXT INPUT
-            # ==================================================
-
-            else:
-
-                transcript = prompt.strip() if prompt else ""
-
-            # --------------------------------------------------
-            # 3. Validate transcript
-            # --------------------------------------------------
-
-            if not transcript or not transcript.strip():
-
-                st.warning(
-                    "No clear speech or text input was found. "
-                    "Please provide a pitch or factual claim."
-                )
-
-                st.stop()
-
-            transcript = transcript.strip()
-
-            # --------------------------------------------------
-            # Optional development debugging
-            # --------------------------------------------------
-            # Remove or comment this out before final production
-            # if you do not want to show the transcript.
-
-            with st.expander("📝 View Transcript", expanded=False):
-                st.write(transcript)
-
-            # ==================================================
-            # 4. CLAIM EXTRACTION
-            # ==================================================
-
-            try:
-
+                # BUG FIX: Extract claims with error handling
                 extractor = ClaimExtractor()
-
                 claims = extractor.extract_claims(transcript)
-
-            except ValueError as e:
-
-                st.error(
-                    f"⚠️ Claim extraction input error: {e}"
-                )
-
-                st.stop()
-
-            except RuntimeError as e:
-
-                st.error(
-                    f"⚠️ Claim extraction failed: {e}"
-                )
-
-                st.stop()
-
-            except Exception as e:
-
-                st.error(
-                    f"⚠️ Unexpected claim extraction error: {e}"
-                )
-
-                st.stop()
-
-            # --------------------------------------------------
-            # 5. Validate extractor output
-            # --------------------------------------------------
-
-            if claims is None:
-
-                st.error(
-                    "⚠️ Claim extractor returned no response."
-                )
-
-                st.stop()
-
-            if not isinstance(claims, list):
-
-                st.error(
-                    "⚠️ Claim extractor returned an invalid format."
-                )
-
-                st.stop()
-
-            # ==================================================
-            # 6. NO CLAIMS FOUND
-            # ==================================================
-
-            if len(claims) == 0:
-
-                response_markdown = (
-                    "No verifiable factual claims were found."
-                )
-
-                st.info(response_markdown)
-
-            # ==================================================
-            # 7. CLAIMS FOUND → FACT CHECK
-            # ==================================================
-
-            else:
-
-                st.success(
-                    f"✅ Found {len(claims)} "
-                    f"verifiable claim(s)."
-                )
-
-                searcher = SearchService()
-                checker = FactChecker()
+                
+                if not isinstance(claims, list):
+                    st.error("Failed to extract claims from input.")
+                    logger.error(f"Claims extraction returned non-list: {type(claims)}")
+                    st.stop()
 
                 response_markdown = ""
-
-                # ----------------------------------------------
-                # Process every extracted claim
-                # ----------------------------------------------
-
-                for item in claims:
-
-                    claim_text = str(
-                        item.get("claim", "")
-                    ).strip()
-
-                    category = str(
-                        item.get(
-                            "category",
-                            "General Fact"
-                        )
-                    ).strip()
-
-                    # Skip malformed claims safely
-                    if not claim_text:
-                        continue
-
-                    # ------------------------------------------
-                    # Search for evidence
-                    # ------------------------------------------
-
+                
+                if not claims:
+                    response_markdown = "No verifiable factual claims were found."
+                    st.info(response_markdown)
+                else:
+                    # BUG FIX: Initialize services once, with error handling
                     try:
-
-                        search_res = searcher.search_claim(
-                            claim_text
-                        )
-
+                        searcher = SearchService()
+                        checker = FactChecker()
                     except Exception as e:
+                        st.error(f"Failed to initialize services: {str(e)}")
+                        logger.error(f"Service initialization error: {e}")
+                        st.stop()
 
-                        search_res = []
+                    # BUG FIX: Process each claim with robust error handling
+                    for idx, item in enumerate(claims):
+                        try:
+                            # Validate claim structure
+                            if not isinstance(item, dict):
+                                logger.warning(f"Claim {idx} is not a dict, skipping")
+                                continue
+                            
+                            claim_text = item.get("claim", "")
+                            if not claim_text or not isinstance(claim_text, str):
+                                logger.warning(f"Invalid claim text at index {idx}")
+                                continue
+                            
+                            claim_category = item.get("category", "General Fact")
+                            if not isinstance(claim_category, str):
+                                claim_category = "General Fact"
 
-                        st.warning(
-                            f"Search failed for claim: "
-                            f"{claim_text}\n\n"
-                            f"Error: {e}"
-                        )
+                            # BUG FIX: Search with error handling
+                            search_res = searcher.search_claim(claim_text)
+                            if not isinstance(search_res, list):
+                                logger.warning(f"Search returned non-list for claim: {claim_text}")
+                                search_res = []
 
-                    # ------------------------------------------
-                    # Verify claim
-                    # ------------------------------------------
+                            # BUG FIX: Verify claim with error handling
+                            verdict_info = checker.verify_claim(claim_text, search_res)
+                            if not isinstance(verdict_info, dict):
+                                logger.warning(f"Verdict info is not a dict for claim: {claim_text}")
+                                verdict_info = {
+                                    "verdict": "UNVERIFIED",
+                                    "explanation": "Could not verify claim.",
+                                    "sources": []
+                                }
 
-                    try:
+                            verdict = verdict_info.get("verdict", "UNVERIFIED")
+                            explanation = verdict_info.get("explanation", "No explanation available.")
+                            sources = verdict_info.get("sources", [])
+                            
+                            # BUG FIX: Validate sources is a list
+                            if not isinstance(sources, list):
+                                sources = []
+                            
+                            sources_str = ", ".join(str(s) for s in sources) if sources else "None"
 
-                        verdict_info = checker.verify_claim(
-                            claim_text,
-                            search_res
-                        )
+                            # BUG FIX: Sanitize verdict value
+                            valid_verdicts = {"TRUE", "FALSE", "MIXED", "UNVERIFIED"}
+                            if verdict not in valid_verdicts:
+                                verdict = "UNVERIFIED"
 
-                    except Exception as e:
+                            # Plain markdown card kept for chat history / persistence
+                            card = (
+                                f"**Claim:** \"{claim_text}\"\n\n"
+                                f"**Verdict:** `{verdict}` | **Category:** {claim_category}\n\n"
+                                f"**Explanation:** {explanation}\n\n"
+                                f"**Sources:** {sources_str}\n"
+                            )
 
-                        verdict_info = {
-                            "verdict": "UNVERIFIED",
-                            "explanation": (
-                                "The claim could not be verified "
-                                "because the fact-checking process "
-                                f"encountered an error: {e}"
-                            ),
-                            "sources": []
-                        }
+                            response_markdown += card + "\n---\n"
 
-                    # ------------------------------------------
-                    # Normalize verifier response
-                    # ------------------------------------------
+                            # Styled version shown live in the UI
+                            pill_class = {
+                                "TRUE": "pill-true",
+                                "FALSE": "pill-false",
+                            }.get(verdict, "pill-unverified")
 
-                    if not isinstance(
-                        verdict_info,
-                        dict
-                    ):
-                        verdict_info = {
-                            "verdict": "UNVERIFIED",
-                            "explanation": (
-                                "The fact checker returned "
-                                "an invalid response."
-                            ),
-                            "sources": []
-                        }
+                            verdict_icon = {"TRUE": "✅", "FALSE": "❌"}.get(verdict, "⚠️")
 
-                    verdict = str(
-                        verdict_info.get(
-                            "verdict",
-                            "UNVERIFIED"
-                        )
-                    ).upper()
+                            # BUG FIX: Escape special characters in claim_text for HTML
+                            safe_claim_text = claim_text.replace('"', '&quot;').replace('<', '&lt;').replace('>', '&gt;')
 
-                    explanation = str(
-                        verdict_info.get(
-                            "explanation",
-                            ""
-                        )
-                    ).strip()
+                            styled_card = f"""
+                            <div class="verdict-card">
+                                <div class="verdict-claim">💬 "{safe_claim_text}"</div>
+                                <span class="verdict-pill {pill_class}">{verdict_icon} {verdict}</span>
+                                <span class="verdict-category">🏷️ {claim_category}</span>
+                                <div class="verdict-explanation">{explanation}</div>
+                                <div class="verdict-sources">🔗 Sources: {sources_str}</div>
+                            </div>
+                            """
+                            st.markdown(styled_card, unsafe_allow_html=True)
 
-                    sources = verdict_info.get(
-                        "sources",
-                        []
-                    )
+                        except Exception as e:
+                            logger.error(f"Error processing claim {idx}: {str(e)}")
+                            st.warning(f"Error processing one of the claims: {str(e)}")
+                            continue
 
-                    if not isinstance(sources, list):
-                        sources = [str(sources)]
+            except Exception as e:
+                st.error(f"An unexpected error occurred: {str(e)}")
+                logger.error(f"Unexpected error in audit logic: {e}", exc_info=True)
+                st.stop()
 
-                    sources_str = (
-                        ", ".join(
-                            str(source)
-                            for source in sources
-                        )
-                        if sources
-                        else "None"
-                    )
+        # BUG FIX: Ensure response_markdown is a string before appending
+        if isinstance(response_markdown, str):
+            st.session_state.messages.append({"role": "assistant", "content": response_markdown})
 
-                    # ------------------------------------------
-                    # Build persistent markdown response
-                    # ------------------------------------------
-
-                    card = (
-                        f'**Claim:** "{claim_text}"\n\n'
-                        f"**Verdict:** `{verdict}` | "
-                        f"**Category:** {category}\n\n"
-                        f"**Explanation:** {explanation}\n\n"
-                        f"**Sources:** {sources_str}\n"
-                    )
-
-                    response_markdown += (
-                        card + "\n---\n"
-                    )
-
-                    # ------------------------------------------
-                    # Styled live result
-                    # ------------------------------------------
-
-                    pill_class = {
-                        "TRUE": "pill-true",
-                        "FALSE": "pill-false",
-                    }.get(
-                        verdict,
-                        "pill-unverified"
-                    )
-
-                    verdict_icon = {
-                        "TRUE": "✅",
-                        "FALSE": "❌",
-                    }.get(
-                        verdict,
-                        "⚠️"
-                    )
-
-                    styled_card = f"""
-                    <div class="verdict-card">
-
-                        <div class="verdict-claim">
-                            💬 "{claim_text}"
-                        </div>
-
-                        <span class="verdict-pill {pill_class}">
-                            {verdict_icon} {verdict}
-                        </span>
-
-                        <span class="verdict-category">
-                            🏷️ {category}
-                        </span>
-
-                        <div class="verdict-explanation">
-                            {explanation}
-                        </div>
-
-                        <div class="verdict-sources">
-                            🔗 Sources: {sources_str}
-                        </div>
-
-                    </div>
-                    """
-
-                    st.markdown(
-                        styled_card,
-                        unsafe_allow_html=True
-                    )
-
-            # ==================================================
-            # 8. SAVE ASSISTANT RESPONSE
-            # ==================================================
-
-            st.session_state.messages.append(
-                {
-                    "role": "assistant",
-                    "content": response_markdown
-                }
-            )
-
-            # ==================================================
-            # 9. SAVE TO CHAT HISTORY
-            # ==================================================
-
-            title = (
-                user_text[:25] + "..."
-                if len(user_text) > 25
-                else user_text
-            )
-
-            save_current_session(
-                title,
-                st.session_state.messages
-            )
-
-
-
-                           
-                        
+            # Save to Sidebar History
+            title = user_text[:25] + "..." if len(user_text) > 25 else user_text
+            save_current_session(title, st.session_state.messages)
+        else:
+            logger.error(f"response_markdown is not a string: {type(response_markdown)}")
+            st.error("Failed to save audit results.")
