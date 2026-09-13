@@ -38,7 +38,7 @@ class Config:
 
     # --- Models ---
     WHISPER_MODEL: str = _get_setting("WHISPER_MODEL", "whisper-large-v3")
-    GROQ_MODEL: str = _get_setting("GROQ_MODEL", "llama-3.3-70b-versatile")
+    GROQ_MODEL: str = _get_setting("GROQ_MODEL", "mixtral-8x7b-32768")
 
     # --- UI ---
     PAGE_TITLE: str = "ClaimLens - Live Fact Checker"
