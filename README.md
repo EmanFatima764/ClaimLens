@@ -1,18 +1,18 @@
 <!-- =============================================== -->
-<!-- AI PITCH AUDITOR - README -->
+<!-- ClaimLens - README -->
 <!-- =============================================== -->
 
-# 🛡️ AI Pitch Auditor
+# 🛡️ ClaimLens
 
 **Real-time AI-powered fact-checking for startup pitches**
 
-Live Demo: [ai-pitch-auditor-eyxbove2nm5qwnjhatmzeq.streamlit.app](https://ai-pitch-auditor-eyxbove2nm5qwnjhatmzeq.streamlit.app/)
+Live Demo: [claimlens-eyxbove2nm5qwnjhatmzeq.streamlit.app](https://claimlens-eyxbove2nm5qwnjhatmzeq.streamlit.app/)
 
 ---
 
 ## ✨ Overview
 
-**AI Pitch Auditor** is an intelligent fact-checking system designed to audit startup pitch claims in real-time. It uses advanced AI models to extract factual statements from pitch transcripts and verify them against live internet search evidence—helping investors, entrepreneurs, and pitch evaluators identify accurate and misleading claims instantly.
+**ClaimLens** is an intelligent fact-checking system designed to audit startup pitch claims in real-time. It uses advanced AI models to extract factual statements from pitch transcripts and verify them against live internet search evidence—helping investors, entrepreneurs, and pitch evaluators identify accurate and misleading claims instantly.
 
 **Perfect for:**
 - 🎤 Pitch competitions and accelerator demos
@@ -136,8 +136,8 @@ Live Demo: [ai-pitch-auditor-eyxbove2nm5qwnjhatmzeq.streamlit.app](https://ai-pi
 
 ### Step 1: Clone Repository
 ```bash
-git clone https://github.com/EmanFatima764/AI-Pitch-Auditor.git
-cd AI-Pitch-Auditor
+git clone https://github.com/EmanFatima764/ClaimLens.git
+cd ClaimLens
 ```
 
 ### Step 2: Create Virtual Environment
@@ -188,7 +188,7 @@ Visit `http://localhost:8501` in your browser.
 ## 📁 Project Structure
 
 ```
-AI-Pitch-Auditor/
+ClaimLens/
 ├── app.py                          # Main Streamlit application
 ├── config.py                       # Environment & config management
 ├── services/
@@ -254,7 +254,7 @@ For each claim:
 - Extracts snippets and source URLs
 - Creates evidence context
 
-#### 5️⃣ **Fact Verification**
+#### 5️⃣ **Fact Verification**n
 Groq LLM evaluates claim vs. evidence:
 - Compares claim statement with search results
 - Assigns verdict: `TRUE | FALSE | MIXED | UNVERIFIED`
@@ -282,7 +282,7 @@ Streamlit UI displays:
 ### Main Dashboard
 ```
 ┌─────────────────────────────────────────┐
-│  🛡️ AI PITCH AUDITOR                   │
+│  🛡️ ClaimLens                   │
 │  Paste claim, record pitch, or upload   │
 │  audio file for instant fact-checking   │
 └─────────────────────────────────────────┘
@@ -297,7 +297,7 @@ RESULTS:
 │ ✅ TRUE | 🏷️ Traction              │
 │ Evidence supports this claim        │
 │ 🔗 Sources: example.com/users       │
-└─────────────────────────────────────┘
+└─────────────────��───────────────────┘
 ```
 
 ### Sidebar Features
@@ -321,7 +321,7 @@ WHISPER_MODEL = "whisper-large-v3"  # Transcription
 GROQ_MODEL = "llama-3.3-70b-versatile"  # LLM
 
 # UI Settings
-PAGE_TITLE = "AI Pitch Auditor - Live Fact Checker"
+PAGE_TITLE = "ClaimLens - Live Fact Checker"
 PAGE_ICON = "🎙️"
 ```
 
@@ -432,7 +432,7 @@ Other specific, factual statements verifiable by external evidence
 6. Click "Deploy"
 
 **Live Demo URL:**  
-[ai-pitch-auditor-eyxbove2nm5qwnjhatmzeq.streamlit.app](https://ai-pitch-auditor-eyxbove2nm5qwnjhatmzeq.streamlit.app/)
+[claimlens-eyxbove2nm5qwnjhatmzeq.streamlit.app](https://claimlens-eyxbove2nm5qwnjhatmzeq.streamlit.app/)
 
 ### Deploy Locally with Docker
 
@@ -588,7 +588,7 @@ For issues or questions:
 
 ## 🎉 Ready to Audit?
 
-**[Start Fact-Checking Now →](https://ai-pitch-auditor-eyxbove2nm5qwnjhatmzeq.streamlit.app/)**
+**[Start Fact-Checking Now →](https://claimlens-eyxbove2nm5qwnjhatmzeq.streamlit.app/)**
 
 ---
 
