@@ -6,7 +6,7 @@ from config import Config
 class FactChecker:
     def __init__(self):
         self.client = Groq(api_key=Config.GROQ_API_KEY)
-        self.model = "llama-3.3-70b-versatile"
+        self.model = Config.GROQ_MODEL
 
     def verify_claim(self, claim: str, search_results: list[dict]) -> dict:
         """
