@@ -1,27 +1,5 @@
-# Virtual Environment
-venv/
-.venv/
-env/
-
-# Environment Variables & Secrets
 .env
-*.env
-
-# Python Bytecode & Cache
+.streamlit/secrets.toml
+venv/
 __pycache__/
-*.py[cod]
-*$py.class
-
-# Temporary Files & Pip Cache
-temp/
-pip_cache/
-.cache/
-
-# IDE & Editor Files
-.vscode/
-.idea/
-*.swp
-
-# OS Metadata
-.DS_Store
-Thumbs.db
+*.pyc
