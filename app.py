@@ -20,6 +20,20 @@ st.set_page_config(
 )
 
 # ==========================================
+# 1A. STARTUP CONFIG CHECK
+# ==========================================
+_missing = Config.missing_keys()
+if _missing:
+    st.error(
+        "⚠️ **ClaimLens is not fully configured.** Missing: "
+        + ", ".join(f"`{k}`" for k in _missing)
+        + "\n\nOn Streamlit Cloud: **App settings → Secrets** and add:\n"
+        + "```toml\nGROQ_API_KEY = \"...\"\nTAVILY_API_KEY = \"...\"\n```\n"
+        + "Locally: add the same values to a `.env` file in the project root."
+    )
+    st.stop()
+
+# ==========================================
 # 1B. GLOBAL STYLING (visual only — no logic here)
 # ==========================================
 st.markdown("""
@@ -326,6 +340,7 @@ with col1:
     uploaded_file = st.file_uploader("📁 Upload Audio File", type=["mp3", "wav", "m4a"])
 with col2:
     recorded_audio = st.audio_input("🎙️ Record Audio Pitch")
+st.caption("Supports MP3, WAV, M4A — up to ~25MB / a few minutes of audio.")
 st.markdown('</div>', unsafe_allow_html=True)
 
 # Chat Input Bar
@@ -437,73 +452,3 @@ if prompt or uploaded_file or recorded_audio:
                                 verdict_info = {
                                     "verdict": "UNVERIFIED",
                                     "explanation": "Could not verify claim.",
-                                    "sources": []
-                                }
-
-                            verdict = verdict_info.get("verdict", "UNVERIFIED")
-                            explanation = verdict_info.get("explanation", "No explanation available.")
-                            sources = verdict_info.get("sources", [])
-                            
-                            # BUG FIX: Validate sources is a list
-                            if not isinstance(sources, list):
-                                sources = []
-                            
-                            sources_str = ", ".join(str(s) for s in sources) if sources else "None"
-
-                            # BUG FIX: Sanitize verdict value
-                            valid_verdicts = {"TRUE", "FALSE", "MIXED", "UNVERIFIED"}
-                            if verdict not in valid_verdicts:
-                                verdict = "UNVERIFIED"
-
-                            # Plain markdown card kept for chat history / persistence
-                            card = (
-                                f"**Claim:** \"{claim_text}\"\n\n"
-                                f"**Verdict:** `{verdict}` | **Category:** {claim_category}\n\n"
-                                f"**Explanation:** {explanation}\n\n"
-                                f"**Sources:** {sources_str}\n"
-                            )
-
-                            response_markdown += card + "\n---\n"
-
-                            # Styled version shown live in the UI
-                            pill_class = {
-                                "TRUE": "pill-true",
-                                "FALSE": "pill-false",
-                            }.get(verdict, "pill-unverified")
-
-                            verdict_icon = {"TRUE": "✅", "FALSE": "❌"}.get(verdict, "⚠️")
-
-                            # BUG FIX: Escape special characters in claim_text for HTML
-                            safe_claim_text = claim_text.replace('"', '&quot;').replace('<', '&lt;').replace('>', '&gt;')
-
-                            styled_card = f"""
-                            <div class="verdict-card">
-                                <div class="verdict-claim">💬 "{safe_claim_text}"</div>
-                                <span class="verdict-pill {pill_class}">{verdict_icon} {verdict}</span>
-                                <span class="verdict-category">🏷️ {claim_category}</span>
-                                <div class="verdict-explanation">{explanation}</div>
-                                <div class="verdict-sources">🔗 Sources: {sources_str}</div>
-                            </div>
-                            """
-                            st.markdown(styled_card, unsafe_allow_html=True)
-
-                        except Exception as e:
-                            logger.error(f"Error processing claim {idx}: {str(e)}")
-                            st.warning(f"Error processing one of the claims: {str(e)}")
-                            continue
-
-            except Exception as e:
-                st.error(f"An unexpected error occurred: {str(e)}")
-                logger.error(f"Unexpected error in audit logic: {e}", exc_info=True)
-                st.stop()
-
-        # BUG FIX: Ensure response_markdown is a string before appending
-        if isinstance(response_markdown, str):
-            st.session_state.messages.append({"role": "assistant", "content": response_markdown})
-
-            # Save to Sidebar History
-            title = user_text[:25] + "..." if len(user_text) > 25 else user_text
-            save_current_session(title, st.session_state.messages)
-        else:
-            logger.error(f"response_markdown is not a string: {type(response_markdown)}")
-            st.error("Failed to save audit results.")
