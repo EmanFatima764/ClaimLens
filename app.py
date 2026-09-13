@@ -159,6 +159,7 @@ if prompt or uploaded_file or recorded_audio:
 
         st.session_state.messages.append({"role": "assistant", "content": response_markdown})
 
+        
         # Save to Sidebar History
         title = user_text[:25] + "..." if len(user_text) > 25 else user_text
         save_current_session(title, st.session_state.messages)
