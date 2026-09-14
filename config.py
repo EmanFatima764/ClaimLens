@@ -9,5 +9,5 @@ class Config:
     WHISPER_MODEL = "whisper-large-v3"
     GROQ_MODEL = "openai/gpt-oss-120b"
     
-    PAGE_TITLE = "AI Pitch Auditor - Live Fact Checker"
+    PAGE_TITLE = "ClaimLens - Live Fact Checker"
     PAGE_ICON = "🎙️"
