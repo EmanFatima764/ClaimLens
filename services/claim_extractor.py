@@ -25,7 +25,7 @@ class ClaimExtractor:
             return []
 
         prompt = f"""
-You are an expert AI Pitch Auditor.
+You are an expert ClaimLens Auditor.
 
 Analyze the following startup pitch transcript and extract ONLY
 specific, verifiable claims.
