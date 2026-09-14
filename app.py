@@ -6,7 +6,7 @@ from services import STTService, ClaimExtractor, SearchService, FactChecker
 # 1. PAGE CONFIGURATION
 # ==========================================
 st.set_page_config(
-    page_title="AI Pitch Auditor",
+    page_title="ClaimLens",
     page_icon="🛡️",
     layout="wide"
 )
@@ -53,7 +53,7 @@ def save_current_session(user_title, messages_list):
 # 3. SIDEBAR (CHAT HISTORY & CONTROLS)
 # ==========================================
 with st.sidebar:
-    st.title("🛡️ Pitch Auditor")
+    st.title("🛡️ ClaimLens")
     
     if st.button("➕ New Audit", use_container_width=True):
         create_new_chat()
@@ -79,7 +79,7 @@ with st.sidebar:
 # ==========================================
 # 4. MAIN INTERFACE
 # ==========================================
-st.title("AI Pitch Auditor")
+st.title("ClaimLens")
 st.write("Paste your claim, record audio, or upload a pitch file to audit.")
 
 # Display Chat History
