@@ -4,6 +4,9 @@
 
 # 🛡️ ClaimLens
 
+<img width="2000" height="2000" alt="ClaimLens logo designs (2)" src="https://github.com/user-attachments/assets/fa6bde65-f0fc-4994-9c8e-d656ece9cccc" />
+
+
 **Real-time AI-powered fact-checking for startup pitches**
 
 Live Demo: [claimlens-eyxbove2nm5qwnjhatmzeq.streamlit.app](https://claimlens-5xoiehx7n2fz5bawmwctlg.streamlit.app/)
